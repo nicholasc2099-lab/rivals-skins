@@ -1,0 +1,44 @@
+name: Refresh Marvel Rivals data
+on:
+  schedule:
+    - cron: '0 7 * * *'     # every day at 07:00 UTC
+  workflow_dispatch:         # or run it by hand from the Actions tab
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+concurrency:
+  group: pages
+  cancel-in-progress: false
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install requests beautifulsoup4 lxml
+      # If a source is temporarily down, keep going and publish the data we
+      # already have rather than taking the site offline for the day.
+      - name: Collect fresh data
+        continue-on-error: true
+        run: python rivals_cosmetics.py --collect
+      - name: Build the page
+        run: python rivals_cosmetics.py --build --out site/index.html
+      - name: Save the refreshed database
+        run: |
+          git config user.name  "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git add -A rivals_cosmetics.sqlite3 site
+          git diff --quiet --staged || git commit -m "Refresh data"
+          git push
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deployment
+        uses: actions/deploy-pages@v4
